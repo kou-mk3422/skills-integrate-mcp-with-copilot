@@ -7,11 +7,12 @@ teacher authentication for registration management.
 """
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
 import os
-import secrets
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -29,7 +30,9 @@ app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
 
 SESSION_COOKIE_NAME = "teacher_session"
 SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
-TEACHER_CONFIG_PATH = current_dir / "teachers.json"
+TEACHER_CONFIG_PATH = Path(
+    os.environ.get("TEACHER_CONFIG_PATH", current_dir / "teachers.json")
+)
 
 # In-memory activity database
 activities = {
@@ -95,6 +98,12 @@ class TeacherLoginRequest(BaseModel):
 
 
 def load_teacher_credentials():
+    if not TEACHER_CONFIG_PATH.exists():
+        raise RuntimeError(
+            "Teacher config not found. Copy src/teachers.example.json to "
+            "src/teachers.json and add local teacher credentials."
+        )
+
     with TEACHER_CONFIG_PATH.open(encoding="utf-8") as teacher_file:
         teacher_data = json.load(teacher_file)
 
@@ -129,9 +138,45 @@ def verify_teacher_password(password: str, teacher_record: dict):
     return hmac.compare_digest(calculated_hash, expected_hash)
 
 
-def require_teacher(request: Request):
+def build_session_signature(username: str, issued_at: int):
+    payload = f"{username}:{issued_at}".encode("utf-8")
+    return hmac.new(session_secret_key, payload, hashlib.sha256).hexdigest()
+
+
+def create_session_token(username: str):
+    issued_at = int(time.time())
+    signature = build_session_signature(username, issued_at)
+    token = f"{username}:{issued_at}:{signature}".encode("utf-8")
+    return base64.urlsafe_b64encode(token).decode("utf-8")
+
+
+def get_authenticated_teacher(request: Request):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    username = teacher_sessions.get(session_token)
+    if not session_token:
+        return None
+
+    try:
+        decoded_token = base64.urlsafe_b64decode(session_token.encode("utf-8"))
+        username, issued_at, signature = decoded_token.decode("utf-8").split(":", 2)
+        issued_at = int(issued_at)
+    except (ValueError, TypeError, binascii.Error):
+        return None
+
+    if username not in teacher_credentials:
+        return None
+
+    expected_signature = build_session_signature(username, issued_at)
+    if not hmac.compare_digest(signature, expected_signature):
+        return None
+
+    if time.time() - issued_at > SESSION_MAX_AGE_SECONDS:
+        return None
+
+    return username
+
+
+def require_teacher(request: Request):
+    username = get_authenticated_teacher(request)
 
     if not username:
         raise HTTPException(
@@ -143,7 +188,9 @@ def require_teacher(request: Request):
 
 
 teacher_credentials = load_teacher_credentials()
-teacher_sessions = {}
+session_secret_key = hashlib.sha256(
+    TEACHER_CONFIG_PATH.read_bytes()
+).digest()
 
 
 @app.get("/")
@@ -158,13 +205,12 @@ def get_activities():
 
 @app.get("/teacher/session")
 def get_teacher_session(request: Request):
-    session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    username = teacher_sessions.get(session_token)
+    username = get_authenticated_teacher(request)
     return {"authenticated": bool(username), "username": username}
 
 
 @app.post("/teacher/login")
-def teacher_login(credentials: TeacherLoginRequest):
+def teacher_login(credentials: TeacherLoginRequest, request: Request):
     teacher_record = teacher_credentials.get(credentials.username)
 
     if not teacher_record or not verify_teacher_password(
@@ -172,8 +218,7 @@ def teacher_login(credentials: TeacherLoginRequest):
     ):
         raise HTTPException(status_code=401, detail="Invalid teacher credentials")
 
-    session_token = secrets.token_urlsafe(32)
-    teacher_sessions[session_token] = credentials.username
+    session_token = create_session_token(credentials.username)
 
     response = JSONResponse(
         {"message": f"Logged in as {credentials.username}",
@@ -184,17 +229,14 @@ def teacher_login(credentials: TeacherLoginRequest):
         value=session_token,
         httponly=True,
         max_age=SESSION_MAX_AGE_SECONDS,
+        secure=request.url.scheme == "https",
         samesite="strict"
     )
     return response
 
 
 @app.post("/teacher/logout")
-def teacher_logout(request: Request):
-    session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if session_token:
-        teacher_sessions.pop(session_token, None)
-
+def teacher_logout():
     response = JSONResponse({"message": "Logged out"})
     response.delete_cookie(SESSION_COOKIE_NAME)
     return response

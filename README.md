@@ -12,9 +12,9 @@ Remember, it's self-paced so feel free to take a break! ☕️
 
 ## Local teacher login
 
-- Teacher credentials are loaded from `/home/runner/work/skills-integrate-mcp-with-copilot/skills-integrate-mcp-with-copilot/src/teachers.json`
-- The backend stores a salted PBKDF2 password hash in that JSON config
-- Demo login for this local exercise: `teacher` / `teacherpass123`
+- Copy `src/teachers.example.json` to `src/teachers.json`
+- Add teacher credentials to that local backend JSON config using a salted PBKDF2 password hash
+- `src/teachers.json` is ignored so working teacher credentials stay local to each environment
 
 ---
 
