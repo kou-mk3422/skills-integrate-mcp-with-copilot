@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 from pathlib import Path
 
@@ -99,7 +100,7 @@ class TeacherLoginRequest(BaseModel):
 
 def load_teacher_credentials():
     if not TEACHER_CONFIG_PATH.exists():
-        raise RuntimeError(
+        raise FileNotFoundError(
             "Teacher config not found. Copy src/teachers.example.json to "
             "src/teachers.json and add local teacher credentials."
         )
@@ -115,15 +116,28 @@ def load_teacher_credentials():
 
         if username and password_hash and salt:
             teachers[username] = {
+                "username": username,
                 "password_hash": password_hash,
                 "salt": salt,
                 "iterations": int(teacher.get("iterations", 100000))
             }
 
     if not teachers:
-        raise RuntimeError("No teacher credentials found in teachers.json")
+        raise ValueError("No teacher credentials found in teachers.json")
 
     return teachers
+
+
+def get_teacher_credentials(require_config: bool = True):
+    try:
+        return load_teacher_credentials()
+    except (FileNotFoundError, ValueError, json.JSONDecodeError):
+        if require_config:
+            raise HTTPException(
+                status_code=503,
+                detail="Teacher authentication is not configured"
+            )
+        return {}
 
 
 def verify_teacher_password(password: str, teacher_record: dict):
@@ -162,6 +176,7 @@ def get_authenticated_teacher(request: Request):
     except (ValueError, TypeError, binascii.Error):
         return None
 
+    teacher_credentials = get_teacher_credentials(require_config=False)
     if username not in teacher_credentials:
         return None
 
@@ -187,10 +202,11 @@ def require_teacher(request: Request):
     return username
 
 
-teacher_credentials = load_teacher_credentials()
-session_secret_key = hashlib.sha256(
-    TEACHER_CONFIG_PATH.read_bytes()
-).digest()
+session_secret_key = os.environ.get("SESSION_SECRET_KEY")
+if session_secret_key:
+    session_secret_key = session_secret_key.encode("utf-8")
+else:
+    session_secret_key = secrets.token_bytes(32)
 
 
 @app.get("/")
@@ -211,6 +227,7 @@ def get_teacher_session(request: Request):
 
 @app.post("/teacher/login")
 def teacher_login(credentials: TeacherLoginRequest, request: Request):
+    teacher_credentials = get_teacher_credentials()
     teacher_record = teacher_credentials.get(credentials.username)
 
     if not teacher_record or not verify_teacher_password(
@@ -218,7 +235,7 @@ def teacher_login(credentials: TeacherLoginRequest, request: Request):
     ):
         raise HTTPException(status_code=401, detail="Invalid teacher credentials")
 
-    session_token = create_session_token(credentials.username)
+    session_token = create_session_token(teacher_record["username"])
 
     response = JSONResponse(
         {"message": f"Logged in as {credentials.username}",

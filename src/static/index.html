@@ -9,8 +9,15 @@
   <body>
     <header>
       <div class="teacher-menu">
-        <button id="teacher-login-toggle" type="button">Teacher Login</button>
-        <div id="teacher-login-panel" class="teacher-login-panel hidden">
+        <button
+          id="teacher-login-toggle"
+          type="button"
+          aria-controls="teacher-login-panel"
+          aria-expanded="false"
+        >
+          Teacher Login
+        </button>
+        <div id="teacher-login-panel" class="teacher-login-panel hidden" aria-hidden="true">
           <form id="teacher-login-form">
             <div class="form-group">
               <label for="teacher-username">Username:</label>

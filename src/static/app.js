@@ -33,6 +33,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (authState.authenticated) {
       teacherLoginPanel.classList.add("hidden");
+      teacherLoginPanel.setAttribute("aria-hidden", "true");
+      teacherLoginToggle.setAttribute("aria-expanded", "false");
       teacherSessionLabel.textContent = `Logged in as ${authState.username}`;
     } else {
       teacherSessionLabel.textContent = "";
@@ -148,6 +150,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   teacherLoginToggle.addEventListener("click", () => {
     teacherLoginPanel.classList.toggle("hidden");
+    const expanded = !teacherLoginPanel.classList.contains("hidden");
+    teacherLoginToggle.setAttribute("aria-expanded", String(expanded));
+    teacherLoginPanel.setAttribute("aria-hidden", String(!expanded));
   });
 
   teacherLoginForm.addEventListener("submit", async (event) => {
