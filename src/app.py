@@ -312,8 +312,8 @@ def teacher_login(credentials: TeacherLoginRequest, request: Request):
     session_token = create_session_token(teacher_record["username"])
 
     response = JSONResponse(
-        {"message": f"Logged in as {credentials.username}",
-         "username": credentials.username}
+        {"message": f"Logged in as {teacher_record['username']}",
+         "username": teacher_record["username"]}
     )
     response.set_cookie(
         key=SESSION_COOKIE_NAME,

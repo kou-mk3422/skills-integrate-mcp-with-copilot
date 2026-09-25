@@ -254,6 +254,8 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error loading teacher session:", error);
     })
     .finally(() => {
-      fetchActivities();
+      fetchActivities().catch((error) => {
+        console.error("Error loading activities:", error);
+      });
     });
 });

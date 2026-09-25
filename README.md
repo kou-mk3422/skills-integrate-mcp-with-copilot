@@ -16,6 +16,8 @@ Remember, it's self-paced so feel free to take a break! ☕️
 - Add teacher credentials to that local backend JSON config using a salted PBKDF2 password hash
 - Set a local `SESSION_SECRET_KEY` environment variable before enabling teacher logins
 - `src/teachers.json` is ignored so working teacher credentials stay local to each environment
+- Example hash generation command:
+  `python -c "import os,base64,hashlib; secret=b'your-password'; salt=os.urandom(16); print({'password_hash': base64.b64encode(hashlib.pbkdf2_hmac('sha256', secret, salt, 100000)).decode(), 'salt': base64.b64encode(salt).decode(), 'iterations': 100000})"`
 
 ---
 
