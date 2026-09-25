@@ -1,0 +1,10 @@
+{
+  "teachers": [
+    {
+      "username": "replace-me",
+      "password_hash": "replace-with-a-base64-encoded-pbkdf2-hash",
+      "salt": "replace-with-a-base64-encoded-random-salt",
+      "iterations": 100000
+    }
+  ]
+}

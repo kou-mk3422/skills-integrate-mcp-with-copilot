@@ -16,12 +16,47 @@ body {
 }
 
 header {
+  position: relative;
   text-align: center;
   padding: 20px 0;
   margin-bottom: 30px;
   background-color: #1a237e;
   color: white;
   border-radius: 5px;
+}
+
+.teacher-menu {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  text-align: right;
+}
+
+.teacher-login-panel,
+.teacher-session {
+  margin-top: 10px;
+  padding: 12px;
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+}
+
+.teacher-login-panel {
+  min-width: 240px;
+}
+
+.teacher-login-panel .form-group {
+  text-align: left;
+}
+
+.teacher-login-panel label,
+.teacher-session {
+  color: white;
+}
+
+.teacher-session {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 header h1 {
@@ -190,6 +225,17 @@ button:hover {
 
 .hidden {
   display: none;
+}
+
+@media (max-width: 767px) {
+  header {
+    padding-top: 110px;
+  }
+
+  .teacher-menu {
+    left: 20px;
+    right: 20px;
+  }
 }
 
 footer {
