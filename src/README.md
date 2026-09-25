@@ -6,6 +6,9 @@ A super simple FastAPI application that allows students to view and sign up for 
 
 - View all available extracurricular activities
 - Sign up for activities
+- Persist activities and registrations in SQLite
+- Require teacher authentication for registration changes
+- Enforce activity capacity atomically
 
 ## Getting Started
 
@@ -18,8 +21,11 @@ A super simple FastAPI application that allows students to view and sign up for 
 2. Run the application:
 
    ```
-   python app.py
+   ADMIN_PASSWORD=change-this-password uvicorn app:app --reload
    ```
+
+   `ADMIN_USERNAME` defaults to `teacher`. Set `ACTIVITY_DB_PATH` to choose a
+   different SQLite database location.
 
 3. Open your browser and go to:
    - API documentation: http://localhost:8000/docs
@@ -30,7 +36,8 @@ A super simple FastAPI application that allows students to view and sign up for 
 | Method | Endpoint                                                          | Description                                                         |
 | ------ | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
 | GET    | `/activities`                                                     | Get all activities with their details and current participant count |
-| POST   | `/activities/{activity_name}/signup?email=student@mergington.edu` | Sign up for an activity                                             |
+| POST   | `/activities/{activity_name}/signup?email=student@mergington.edu` | Sign up for an activity (teacher authentication required)           |
+| DELETE | `/activities/{activity_name}/unregister?email=student@mergington.edu` | Remove a registration (teacher authentication required)          |
 
 ## Data Model
 
@@ -47,4 +54,5 @@ The application uses a simple data model with meaningful identifiers:
    - Name
    - Grade level
 
-All data is stored in memory, which means data will be reset when the server restarts.
+Activities and registrations are stored in SQLite, so registrations survive
+server restarts. The default database file is `src/activities.db`.
