@@ -12,7 +12,6 @@ import hashlib
 import hmac
 import json
 import os
-import secrets
 import time
 from pathlib import Path
 
@@ -30,6 +29,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
 
 SESSION_COOKIE_NAME = "teacher_session"
+SESSION_COOKIE_PATH = "/"
 SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 TEACHER_CONFIG_PATH = Path(
     os.environ.get("TEACHER_CONFIG_PATH", current_dir / "teachers.json")
@@ -115,6 +115,12 @@ def load_teacher_credentials():
         salt = teacher.get("salt")
 
         if username and password_hash and salt:
+            try:
+                base64.b64decode(password_hash)
+                base64.b64decode(salt)
+            except binascii.Error as exc:
+                raise ValueError("Teacher credentials must use valid base64") from exc
+
             teachers[username] = {
                 "username": username,
                 "password_hash": password_hash,
@@ -141,18 +147,40 @@ def get_teacher_credentials(require_config: bool = True):
 
 
 def verify_teacher_password(password: str, teacher_record: dict):
-    expected_hash = base64.b64decode(teacher_record["password_hash"])
-    salt = base64.b64decode(teacher_record["salt"])
-    calculated_hash = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt,
-        teacher_record["iterations"]
-    )
+    try:
+        expected_hash = base64.b64decode(teacher_record["password_hash"])
+        salt = base64.b64decode(teacher_record["salt"])
+        calculated_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt,
+            teacher_record["iterations"]
+        )
+    except binascii.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Teacher authentication is not configured"
+        ) from exc
+
     return hmac.compare_digest(calculated_hash, expected_hash)
 
 
+def get_session_secret_key(require_config: bool = True):
+    session_secret_key = os.environ.get("SESSION_SECRET_KEY")
+    if session_secret_key:
+        return session_secret_key.encode("utf-8")
+
+    if require_config:
+        raise HTTPException(
+            status_code=503,
+            detail="Teacher authentication is not configured"
+        )
+
+    return None
+
+
 def build_session_signature(username: str, issued_at: int):
+    session_secret_key = get_session_secret_key()
     payload = f"{username}:{issued_at}".encode("utf-8")
     return hmac.new(session_secret_key, payload, hashlib.sha256).hexdigest()
 
@@ -167,6 +195,10 @@ def create_session_token(username: str):
 def get_authenticated_teacher(request: Request):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_token:
+        return None
+
+    session_secret_key = get_session_secret_key(require_config=False)
+    if not session_secret_key:
         return None
 
     try:
@@ -200,14 +232,6 @@ def require_teacher(request: Request):
         )
 
     return username
-
-
-session_secret_key = os.environ.get("SESSION_SECRET_KEY")
-if session_secret_key:
-    session_secret_key = session_secret_key.encode("utf-8")
-else:
-    session_secret_key = secrets.token_bytes(32)
-
 
 @app.get("/")
 def root():
@@ -246,6 +270,7 @@ def teacher_login(credentials: TeacherLoginRequest, request: Request):
         value=session_token,
         httponly=True,
         max_age=SESSION_MAX_AGE_SECONDS,
+        path=SESSION_COOKIE_PATH,
         secure=request.url.scheme == "https",
         samesite="strict"
     )
@@ -255,7 +280,7 @@ def teacher_login(credentials: TeacherLoginRequest, request: Request):
 @app.post("/teacher/logout")
 def teacher_logout():
     response = JSONResponse({"message": "Logged out"})
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    response.delete_cookie(SESSION_COOKIE_NAME, path=SESSION_COOKIE_PATH)
     return response
 
 

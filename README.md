@@ -14,6 +14,7 @@ Remember, it's self-paced so feel free to take a break! ☕️
 
 - Copy `src/teachers.example.json` to `src/teachers.json`
 - Add teacher credentials to that local backend JSON config using a salted PBKDF2 password hash
+- Set a local `SESSION_SECRET_KEY` environment variable before enabling teacher logins
 - `src/teachers.json` is ignored so working teacher credentials stay local to each environment
 
 ---
