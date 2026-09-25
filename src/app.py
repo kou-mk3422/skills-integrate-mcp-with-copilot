@@ -31,6 +31,8 @@ app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
 SESSION_COOKIE_NAME = "teacher_session"
 SESSION_COOKIE_PATH = "/"
 SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 5 * 60
 TEACHER_CONFIG_PATH = Path(
     os.environ.get("TEACHER_CONFIG_PATH", current_dir / "teachers.json")
 )
@@ -179,6 +181,41 @@ def get_session_secret_key(require_config: bool = True):
     return None
 
 
+def get_login_attempt_key(request: Request, username: str):
+    client_host = request.client.host if request.client else "unknown"
+    return f"{client_host}:{username.strip().lower()}"
+
+
+def is_login_locked(attempt_key: str):
+    attempt_state = failed_login_attempts.get(attempt_key)
+    if not attempt_state:
+        return False
+
+    locked_until = attempt_state.get("locked_until")
+    if locked_until and time.time() < locked_until:
+        return True
+
+    if locked_until:
+        failed_login_attempts.pop(attempt_key, None)
+
+    return False
+
+
+def record_failed_login(attempt_key: str):
+    attempt_state = failed_login_attempts.setdefault(
+        attempt_key,
+        {"count": 0, "locked_until": None}
+    )
+    attempt_state["count"] += 1
+
+    if attempt_state["count"] >= MAX_LOGIN_ATTEMPTS:
+        attempt_state["locked_until"] = time.time() + LOGIN_LOCKOUT_SECONDS
+
+
+def clear_failed_logins(attempt_key: str):
+    failed_login_attempts.pop(attempt_key, None)
+
+
 def build_session_signature(username: str, issued_at: int):
     session_secret_key = get_session_secret_key()
     payload = f"{username}:{issued_at}".encode("utf-8")
@@ -233,6 +270,10 @@ def require_teacher(request: Request):
 
     return username
 
+
+failed_login_attempts = {}
+
+
 @app.get("/")
 def root():
     return RedirectResponse(url="/static/index.html")
@@ -252,13 +293,22 @@ def get_teacher_session(request: Request):
 @app.post("/teacher/login")
 def teacher_login(credentials: TeacherLoginRequest, request: Request):
     teacher_credentials = get_teacher_credentials()
+    attempt_key = get_login_attempt_key(request, credentials.username)
+    if is_login_locked(attempt_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again later."
+        )
+
     teacher_record = teacher_credentials.get(credentials.username)
 
     if not teacher_record or not verify_teacher_password(
         credentials.password, teacher_record
     ):
+        record_failed_login(attempt_key)
         raise HTTPException(status_code=401, detail="Invalid teacher credentials")
 
+    clear_failed_logins(attempt_key)
     session_token = create_session_token(teacher_record["username"])
 
     response = JSONResponse(

@@ -42,11 +42,22 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function fetchTeacherSession() {
-    const response = await fetch("/teacher/session");
-    const session = await response.json();
-    authState.authenticated = session.authenticated;
-    authState.username = session.username;
-    updateTeacherUI();
+    try {
+      const response = await fetch("/teacher/session");
+      if (!response.ok) {
+        throw new Error("Failed to load teacher session");
+      }
+
+      const session = await response.json();
+      authState.authenticated = session.authenticated;
+      authState.username = session.username;
+      updateTeacherUI();
+    } catch (error) {
+      authState.authenticated = false;
+      authState.username = null;
+      updateTeacherUI();
+      throw error;
+    }
   }
 
   // Function to fetch activities from API
